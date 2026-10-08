@@ -590,7 +590,12 @@ function halt() {
 
 /* ------------------------------------------------------------- controls --- */
 
-els.play.addEventListener("click", () => playFrom(0));
+els.play.addEventListener("click", () => {
+  playFrom(0);
+  // Put a screen reader's cursor into the text that is about to be read, and
+  // bring the pane into view when the layout puts it below the controls.
+  if (state.status === "reading") els.reader.focus();
+});
 
 els.pause.addEventListener("click", async () => {
   // A setting changed while paused cannot be applied to the utterance sitting

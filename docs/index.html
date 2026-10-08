@@ -102,7 +102,13 @@
           <span class="status" id="status" data-state="idle">Idle</span>
         </div>
         <div class="progress" aria-hidden="true"><div class="progress-bar" id="bar"></div></div>
-        <div class="reader" id="reader">
+        <div
+          class="reader"
+          id="reader"
+          role="region"
+          aria-label="Reading"
+          tabindex="-1"
+        >
           <p class="placeholder">Paste some text, then press <strong>Read aloud</strong>.</p>
         </div>
       </section>
