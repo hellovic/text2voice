@@ -101,7 +101,17 @@ async function loadVoices() {
 
 /** Read the catalogue; `refresh` asks the server to re-scan the system. */
 async function fetchVoices(refresh = false) {
-  const res = await fetch(refresh ? "/api/voices?refresh=1" : "/api/voices");
+  // Without a deadline a wedged server leaves the picker silently empty rather
+  // than reporting anything, because this promise simply never settles. A
+  // re-scan respawns the speech engine, so it is allowed longer.
+  let res;
+  try {
+    res = await fetch(refresh ? "/api/voices?refresh=1" : "/api/voices", {
+      signal: AbortSignal.timeout(refresh ? 20000 : 10000),
+    });
+  } catch {
+    throw new Error("The speech engine did not answer. Check the terminal running the server.");
+  }
   if (!res.ok) throw new Error("Could not read the system voice list.");
   const data = await res.json();
   state.voices = data.voices || [];

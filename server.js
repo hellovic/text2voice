@@ -23,6 +23,22 @@ const HOST = process.env.HOST || '127.0.0.1';
  * Build the native helper
  * ------------------------------------------------------------------ */
 
+/**
+ * A helper can exist and still be unspawnable: archives, restored backups and
+ * careless `chmod -R` runs all strip the executable bit, which surfaces only
+ * later as `spawn ... EACCES`. Repairing the mode is instant and needs no
+ * compiler, so do that before deciding whether to recompile.
+ */
+function ensureHelperIsExecutable() {
+  if (!fs.existsSync(HELPER_BIN)) return;
+  try {
+    fs.accessSync(HELPER_BIN, fs.constants.X_OK);
+  } catch {
+    console.log('[build] restoring the executable bit on bin/speak');
+    fs.chmodSync(HELPER_BIN, 0o755);
+  }
+}
+
 function needsBuild() {
   if (!fs.existsSync(HELPER_BIN)) return true;
   const bin = fs.statSync(HELPER_BIN);
@@ -108,6 +124,24 @@ class SpeechEngine {
     child.on('error', (err) => {
       if (generation !== this.generation) return;
       console.error('[speak] failed to launch engine:', err.message);
+      // A spawn that fails outright (bad permissions, wrong architecture) never
+      // emits 'exit', so clean up here. Without this the engine looks
+      // permanently alive, `send()` keeps silently dropping commands, and every
+      // pending voice request hangs instead of reporting the failure.
+      this.child = null;
+      this.buffer = '';
+      if (this.pendingList) {
+        this.pendingList.reject(err);
+        this.pendingList = null;
+      }
+      if (this.session) {
+        this.session.sink.write({
+          event: 'error',
+          message: `Could not start the speech engine: ${err.message}`,
+        });
+        this.session.sink.close();
+        this.session = null;
+      }
     });
   }
 
@@ -449,7 +483,8 @@ const server = http.createServer((req, res) => {
     // ?refresh=1 re-enumerates, so a voice installed while we are running shows
     // up in the picker without restarting the server.
     return handleVoices(res, isTruthy(parsed.query.refresh));
-  }  if (pathname === '/api/speak' && method === 'POST') return handleSpeak(req, res);
+  }
+  if (pathname === '/api/speak' && method === 'POST') return handleSpeak(req, res);
   if (pathname === '/api/control' && method === 'POST') return handleControl(req, res);
   if (pathname === '/api/health') return sendJson(res, 200, { ok: true });
   if (method === 'GET' || method === 'HEAD') return serveStatic(req, res, pathname);
@@ -462,6 +497,7 @@ const server = http.createServer((req, res) => {
  * ------------------------------------------------------------------ */
 
 try {
+  ensureHelperIsExecutable();
   buildHelper();
 } catch (err) {
   console.error(`\n${err.message}\n`);
