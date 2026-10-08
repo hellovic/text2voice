@@ -37,6 +37,7 @@ const voiceMap = new Map();
 const els = {
   source: $("#source"),
   counter: $("#counter"),
+  paste: $("#paste"),
   sample: $("#sample"),
   clear: $("#clear"),
   notice: $("#notice"),
@@ -742,6 +743,26 @@ els.rate.addEventListener("input", () => {
   els.rateOut.textContent = `${(Number(els.rate.value) / 100).toFixed(2).replace(/0$/, "")}×`;
   localStorage.setItem(STORE.rate, els.rate.value);
   restartForSettingChange();
+});
+
+els.paste.addEventListener("click", async () => {
+  // navigator.clipboard needs a secure context (https or localhost) and, in
+  // Chrome, a clipboard-read permission the user is free to refuse — so every
+  // way out of here has to leave the box usable.
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) {
+      setHint("Your clipboard has no text in it.");
+      return;
+    }
+    els.source.value = text;
+    els.source.dispatchEvent(new Event("input"));
+    render(text);
+    setHint(`Pasted ${text.length.toLocaleString()} characters.`);
+  } catch {
+    els.source.focus();
+    setHint("This browser would not hand over the clipboard — press ⌘V or Ctrl+V in the box.", true);
+  }
 });
 
 els.sample.addEventListener("click", () => {
