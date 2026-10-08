@@ -51,8 +51,8 @@ const state = {
   startOffset: 0,
   /** Offset of the word currently being spoken, for resuming mid-reading. */
   lastLoc: 0,
-  /** True when the speed changed while paused and has yet to be applied. */
-  rateStale: false,
+  /** True when a setting changed while paused and has yet to be applied. */
+  restartOnResume: false,
   /** True once the stream is finishing because we asked it to. */
   halting: false,
   /** True while a voice rescan is in flight. */
@@ -198,6 +198,9 @@ function selectLanguage(locale) {
     b.setAttribute("aria-checked", String(b.dataset.lang === locale));
   }
   renderVoiceOptions();
+  // An utterance in flight keeps the voice it started with, so picking another
+  // language has to re-speak for the change to be heard.
+  restartForSettingChange();
 }
 
 /**
@@ -443,20 +446,21 @@ function playFrom(offset) {
  *
  * AVSpeechSynthesizer reads the rate once, when the utterance is queued —
  * setting it on an utterance already being spoken is silently ignored (verified
- * against the live framework). The only way to hear a change immediately is to
- * re-speak from the current word. Dragging the slider fires a stream of input
- * events, so the restart is debounced until the reader settles on a value.
+ * against the live framework). The voice and locale are fixed the same way: an
+ * utterance in flight keeps the voice it started with. So every change to how
+ * the text sounds has to re-speak from the current word. Dragging the slider
+ * fires a stream of input events, hence the debounce.
  */
-let rateTimer = null;
+let restartTimer = null;
 
-function applyRateChange() {
-  clearTimeout(rateTimer);
+function restartForSettingChange() {
+  clearTimeout(restartTimer);
   if (state.status === "idle") return;
-  rateTimer = setTimeout(() => {
+  restartTimer = setTimeout(() => {
     if (state.status === "idle") return;
     if (state.status === "paused") {
       // Nothing is being spoken to restart; re-speak on resume instead.
-      state.rateStale = true;
+      state.restartOnResume = true;
       return;
     }
     playFrom(state.lastLoc);
@@ -480,7 +484,7 @@ function start() {
   setProgress(0);
   setStatus("reading");
   state.lastLoc = state.startOffset;
-  state.rateStale = false;
+  state.restartOnResume = false;
 
   const controller = new AbortController();
   state.abort = controller;
@@ -574,7 +578,7 @@ function finish() {
 }
 
 function halt() {
-  clearTimeout(rateTimer);
+  clearTimeout(restartTimer);
   state.halting = true;
   if (state.abort) {
     state.abort.abort();
@@ -589,9 +593,9 @@ function halt() {
 els.play.addEventListener("click", () => playFrom(0));
 
 els.pause.addEventListener("click", async () => {
-  // A speed changed while paused cannot be applied to the utterance sitting in
-  // the paused synthesizer, so resuming re-speaks the current word instead.
-  if (state.status === "paused" && state.rateStale) {
+  // A setting changed while paused cannot be applied to the utterance sitting
+  // in the paused synthesizer, so resuming re-speaks the current word instead.
+  if (state.status === "paused" && state.restartOnResume) {
     playFrom(state.lastLoc);
     return;
   }
@@ -631,13 +635,16 @@ els.source.addEventListener("input", () => {
     '<p class="placeholder">Press <strong>Read aloud</strong> to render this text.</p>';
 });
 
-els.voice.addEventListener("change", persistVoice);
+els.voice.addEventListener("change", () => {
+  persistVoice();
+  restartForSettingChange();
+});
 els.rescan.addEventListener("click", rescanVoices);
 
 els.rate.addEventListener("input", () => {
   els.rateOut.textContent = `${(Number(els.rate.value) / 100).toFixed(2).replace(/0$/, "")}×`;
   localStorage.setItem(STORE.rate, els.rate.value);
-  applyRateChange();
+  restartForSettingChange();
 });
 
 els.sample.addEventListener("click", () => {

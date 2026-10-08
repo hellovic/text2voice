@@ -70,8 +70,8 @@ const state = {
   startOffset: 0,
   /** Offset of the word currently being spoken, for resuming mid-reading. */
   lastLoc: 0,
-  /** True when the speed changed while paused and has yet to be applied. */
-  rateStale: false,
+  /** True when a setting changed while paused and has yet to be applied. */
+  restartOnResume: false,
   /**
    * Bumped whenever playback is replaced or stopped. Every utterance callback
    * captures the token it was created under and returns early if it is stale —
@@ -231,6 +231,9 @@ function selectLanguage(locale) {
     b.setAttribute("aria-checked", String(b.dataset.lang === locale));
   }
   renderVoiceOptions();
+  // An utterance in flight keeps the voice it started with, so picking another
+  // language has to re-speak for the change to be heard.
+  restartForSettingChange();
 }
 
 /**
@@ -533,20 +536,21 @@ function playFrom(offset) {
 }
 
 /**
- * Speed changes take effect immediately, by re-speaking from the word being
- * read. A `SpeechSynthesisUtterance`'s rate is fixed once it has been handed to
- * the synthesizer, so there is no way to alter one mid-sentence. Dragging the
- * slider fires a stream of input events, hence the debounce.
+ * Changes to how the text sounds take effect immediately, by re-speaking from
+ * the word being read. A `SpeechSynthesisUtterance`'s rate, voice and language
+ * are all fixed once it has been handed to the synthesizer, so there is no way
+ * to alter one mid-sentence. Dragging the slider fires a stream of input events,
+ * hence the debounce.
  */
-let rateTimer = null;
+let restartTimer = null;
 
-function applyRateChange() {
-  clearTimeout(rateTimer);
+function restartForSettingChange() {
+  clearTimeout(restartTimer);
   if (state.status === "idle") return;
-  rateTimer = setTimeout(() => {
+  restartTimer = setTimeout(() => {
     if (state.status === "idle") return;
     if (state.status === "paused") {
-      state.rateStale = true;
+      state.restartOnResume = true;
       return;
     }
     speakFrom(state.lastLoc);
@@ -570,7 +574,7 @@ function start() {
   setProgress(0);
   setStatus("reading");
   state.lastLoc = state.startOffset;
-  state.rateStale = false;
+  state.restartOnResume = false;
   speakFrom(state.startOffset);
 }
 
@@ -659,7 +663,7 @@ function finish() {
 }
 
 function halt() {
-  clearTimeout(rateTimer);
+  clearTimeout(restartTimer);
   state.token++;
   state.run = null;
   synth.cancel();
@@ -673,9 +677,9 @@ els.play.addEventListener("click", () => playFrom(0));
 
 els.pause.addEventListener("click", () => {
   if (state.status === "paused") {
-    // A speed chosen while paused cannot reach the utterance the synthesizer is
-    // holding, so resuming re-speaks the current word instead.
-    if (state.rateStale) playFrom(state.lastLoc);
+    // A setting chosen while paused cannot reach the utterance the synthesizer
+    // is holding, so resuming re-speaks the current word instead.
+    if (state.restartOnResume) playFrom(state.lastLoc);
     else {
       synth.resume();
       setStatus("reading");
@@ -703,7 +707,10 @@ els.source.addEventListener("input", () => {
     '<p class="placeholder">Press <strong>Read aloud</strong> to render this text.</p>';
 });
 
-els.voice.addEventListener("change", persistVoice);
+els.voice.addEventListener("change", () => {
+  persistVoice();
+  restartForSettingChange();
+});
 
 els.rescan.addEventListener("click", () => {
   els.rescan.disabled = true;
@@ -729,7 +736,7 @@ els.rescan.addEventListener("click", () => {
 els.rate.addEventListener("input", () => {
   els.rateOut.textContent = `${(Number(els.rate.value) / 100).toFixed(2).replace(/0$/, "")}×`;
   localStorage.setItem(STORE.rate, els.rate.value);
-  applyRateChange();
+  restartForSettingChange();
 });
 
 els.sample.addEventListener("click", () => {
