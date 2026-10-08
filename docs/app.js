@@ -71,6 +71,8 @@ const state = {
   startOffset: 0,
   /** Offset of the word currently being spoken, for resuming mid-reading. */
   lastLoc: 0,
+  /** Offset the highlight has been painted up to, so gaps can be filled in. */
+  spokenThrough: 0,
   /** True when a setting changed while paused and has yet to be applied. */
   restartOnResume: false,
   /**
@@ -451,6 +453,30 @@ function highlight(loc, len) {
   return loc + len;
 }
 
+/** Offset of the first character at or after `offset` that can carry a highlight. */
+function firstPaintable(offset) {
+  const text = state.text || "";
+  let i = offset;
+  while (i < text.length && TRIMMABLE.test(text[i])) i++;
+  return i;
+}
+
+/**
+ * Paint the highlight from wherever it was left through `stop`.
+ *
+ * Voices differ wildly in the boundaries they report: Apple's premium and
+ * enhanced ones are coarse, up to a second late, and skip characters outright,
+ * while some report nothing at all for short text. Filling the gap between the
+ * last painted offset and the reported range keeps the highlight on the voice
+ * instead of leaving it behind, and painting the first character when a chunk
+ * starts covers both the late opening and the voiceless case.
+ */
+function paintThrough(stop) {
+  const from = Math.min(state.spokenThrough, stop);
+  if (stop > from) state.spokenThrough = highlight(from, stop - from);
+  return state.spokenThrough;
+}
+
 /** Scroll the reader only when the active word has drifted out of view. */
 function keepVisible(el) {
   const box = els.reader.getBoundingClientRect();
@@ -652,6 +678,11 @@ function speakChunk(index) {
 
   const current = () => state.run && state.run.token === run.token && state.run.index === index;
 
+  // Light the first character of the sentence now rather than waiting for a
+  // boundary that may arrive a second late, or never arrive for short text.
+  state.spokenThrough = c.start;
+  paintThrough(c.start, firstPaintable(c.start) + 1);
+
   // Not every voice reports word boundaries (and some report none for Chinese).
   // If none arrive shortly after the sentence starts, light up the whole
   // sentence so the reader can still see where they are.
@@ -660,13 +691,20 @@ function speakChunk(index) {
     if (!sawBoundary && current()) highlight(c.start, c.end - c.start);
   }, 700);
 
+  u.onstart = () => {
+    if (!current()) return;
+    // `speak()` returns before the audio begins; this is the real start.
+    state.spokenThrough = c.start;
+    paintThrough(c.start, firstPaintable(c.start) + 1);
+  };
+
   u.onboundary = (e) => {
     if (!current()) return;
     sawBoundary = true;
     clearTimeout(fallback);
     const loc = c.start + (e.charIndex || 0);
     state.lastLoc = loc;
-    const end = highlight(loc, e.charLength || 1);
+    const end = paintThrough(loc, loc + (e.charLength || 1));
     setProgress(end / Math.max(1, text.length));
   };
 

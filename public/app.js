@@ -52,6 +52,8 @@ const state = {
   startOffset: 0,
   /** Offset of the word currently being spoken, for resuming mid-reading. */
   lastLoc: 0,
+  /** Offset the highlight has been painted up to, so gaps can be filled in. */
+  spokenThrough: 0,
   /** True when a setting changed while paused and has yet to be applied. */
   restartOnResume: false,
   /** True once the stream is finishing because we asked it to. */
@@ -399,6 +401,30 @@ function highlight(loc, len) {
   return loc + len;
 }
 
+/** Offset of the first character at or after `offset` that can carry a highlight. */
+function firstPaintable(offset) {
+  const text = state.text || "";
+  let i = offset;
+  while (i < text.length && TRIMMABLE.test(text[i])) i++;
+  return i;
+}
+
+/**
+ * Paint the highlight from wherever it was left through `stop`.
+ *
+ * Apple's premium and enhanced voices report word boundaries that are coarse,
+ * up to a second late, and skip characters outright ("花都開了。小園散步。"
+ * never gets a callback at all). Filling the gap between the last painted
+ * offset and the reported range keeps the highlight on the voice instead of
+ * leaving it behind, and painting the first character on `start` covers both
+ * the late opening and the short utterances that get no callbacks at all.
+ */
+function paintThrough(loc, stop) {
+  const from = Math.min(state.spokenThrough, loc);
+  if (stop > from) state.spokenThrough = highlight(from, stop - from);
+  return state.spokenThrough;
+}
+
 /** Scroll the reader only when the active word has drifted out of view. */
 function keepVisible(el) {
   const box = els.reader.getBoundingClientRect();
@@ -518,6 +544,7 @@ function start() {
   setProgress(0);
   setStatus("reading");
   state.lastLoc = state.startOffset;
+  state.spokenThrough = state.startOffset;
   state.restartOnResume = false;
 
   const controller = new AbortController();
@@ -578,10 +605,23 @@ function handleEvent(ev) {
   switch (ev.event) {
     case "start":
       setProgress(ev.offset / Math.max(1, els.source.value.length));
+      state.lastLoc = ev.offset;
+      state.spokenThrough = ev.offset;
+      // Light the first character straight away: some voices take a second to
+      // report their first boundary, and short text gets none at all.
+      paintThrough(ev.offset, firstPaintable(ev.offset) + 1);
+      break;
+    case "spoke":
+      // Emitted when an utterance's audio actually begins. The boundary
+      // callbacks can trail it by more than a second, so start the highlight
+      // here; this is also what bridges the gap between chunks.
+      state.lastLoc = ev.loc;
+      state.spokenThrough = ev.loc;
+      paintThrough(ev.loc, firstPaintable(ev.loc) + 1);
       break;
     case "word": {
       state.lastLoc = ev.loc;
-      const end = highlight(ev.loc, ev.len);
+      const end = paintThrough(ev.loc, ev.loc + ev.len);
       setProgress(end / Math.max(1, els.source.value.length));
       break;
     }

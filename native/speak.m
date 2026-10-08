@@ -286,6 +286,16 @@ static NSArray<NSDictionary *> *ChunkText(NSString *text, NSUInteger maxLen) {
   return [self.queueOffsets[idx] unsignedIntegerValue];
 }
 
+// The engine reports no boundary until it has spoken the first word, which for
+// the premium voices can be more than a second into the utterance. Announcing
+// the start of each utterance lets the reader light the first character exactly
+// when audio begins, and closes the gap between consecutive chunks.
+- (void)speechSynthesizer:(AVSpeechSynthesizer *)s
+    didStartSpeechUtterance:(AVSpeechUtterance *)u {
+  if (!self.active) return;
+  EmitSession(self.sessionId, @{@"event" : @"spoke", @"loc" : @([self baseOffsetForUtterance:u])});
+}
+
 - (void)speechSynthesizer:(AVSpeechSynthesizer *)s
     willSpeakRangeOfSpeechString:(NSRange)r
                        utterance:(AVSpeechUtterance *)u {
