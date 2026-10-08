@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Textbook → Voice · 教科書朗讀</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23b4451f'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%23fbf8f3' font-family='serif'%3E%E8%AE%80%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="logo">讀</span>
+        <div class="brand-text">
+          <h1>Textbook → Voice</h1>
+          <p>Reads Chinese aloud with the voices built into this Mac.</p>
+        </div>
+      </div>
+      <div class="badge" title="Speech is generated on this device. No internet connection is used.">
+        <span class="dot"></span> 100% local
+      </div>
+    </header>
+
+    <main>
+      <section class="card input-card">
+        <div class="card-head">
+          <h2>Your text</h2>
+          <span class="counter" id="counter">0 characters</span>
+        </div>
+        <textarea
+          id="source"
+          spellcheck="false"
+          placeholder="Paste your Chinese textbook content here…&#10;&#10;例如：&#10;春天來了，公園裡的花都開了。小明和媽媽一起到公園散步。"
+        ></textarea>
+        <div class="row">
+          <button type="button" class="ghost" id="sample">Load a sample</button>
+          <button type="button" class="ghost" id="clear">Clear</button>
+        </div>
+      </section>
+
+      <section class="card controls-card">
+        <h2>Voice</h2>
+
+        <div class="field">
+          <span class="field-label">Language</span>
+          <div class="segmented" id="languages" role="radiogroup" aria-label="Language"></div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="voice">Speaker</label>
+          <div class="select-row">
+            <select id="voice"></select>
+            <button
+              type="button"
+              class="icon-btn"
+              id="rescan"
+              title="Re-scan this Mac for voices you have just installed"
+              aria-label="Re-scan this Mac for newly installed voices"
+            >↻</button>
+          </div>
+          <p class="field-note">
+            More voices: <strong>VoiceOver Utility → Speech → Voices</strong>, then re-scan.
+          </p>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="rate">
+            Speed <output id="rateOut" for="rate">1.0×</output>
+          </label>
+          <input type="range" id="rate" min="50" max="150" step="5" value="100" />
+        </div>
+
+        <div class="actions">
+          <button type="button" class="primary" id="play">
+            <span class="ico">▶</span> <span id="playLabel">Read aloud</span>
+          </button>
+          <div class="actions-secondary">
+            <button type="button" id="pause" disabled><span class="ico">⏸</span> Pause</button>
+            <button type="button" id="stop" disabled><span class="ico">⏹</span> Stop</button>
+          </div>
+        </div>
+
+        <p class="hint" id="hint">Tip: click any word in the reading pane to start from there.</p>
+      </section>
+
+      <section class="card reader-card">
+        <div class="card-head">
+          <h2>Reading</h2>
+          <span class="status" id="status" data-state="idle">Idle</span>
+        </div>
+        <div class="progress" aria-hidden="true"><div class="progress-bar" id="bar"></div></div>
+        <div class="reader" id="reader">
+          <p class="placeholder">Paste some text, then press <strong>Read aloud</strong>.</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

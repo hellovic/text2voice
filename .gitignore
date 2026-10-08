@@ -1,0 +1,9 @@
+# macOS
+.DS_Store
+
+# Compiled helper — rebuilt automatically from native/speak.m on first run
+bin/
+
+# Node
+node_modules/
+npm-debug.log*

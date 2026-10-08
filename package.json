@@ -1,0 +1,22 @@
+{
+  "name": "textbook-to-voice",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Read Chinese textbook content aloud with Cantonese or Mandarin voices and live word highlighting.",
+  "license": "MIT",
+  "keywords": [
+    "cantonese",
+    "mandarin",
+    "text-to-speech",
+    "textbook",
+    "speech-synthesis"
+  ],
+  "scripts": {
+    "start": "node server.js",
+    "docs": "python3 -m http.server 4322 --directory docs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
