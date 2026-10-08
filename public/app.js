@@ -58,6 +58,8 @@ const state = {
   halting: false,
   /** True while a voice rescan is in flight. */
   refreshing: false,
+  /** True while a clipboard read is in flight. */
+  pasting: false,
 };
 
 /* --------------------------------------------------------------- voices --- */
@@ -432,6 +434,37 @@ function setHint(msg, isError = false) {
   els.hint.classList.toggle("error", isError);
 }
 
+/**
+ * Reading the clipboard is the one thing the browser may refuse outright, or may
+ * answer only once the user has cleared a permission bubble. `readText()` stays
+ * pending for as long as that bubble is open, so a bare await would leave the
+ * Paste button looking simply dead — every path here has to settle.
+ */
+const CLIPBOARD_WAIT_MS = 8000;
+
+function readClipboard() {
+  if (!navigator.clipboard || typeof navigator.clipboard.readText !== "function") {
+    return Promise.reject(new Error("unsupported"));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), CLIPBOARD_WAIT_MS);
+    navigator.clipboard.readText().then(
+      (text) => { clearTimeout(timer); resolve(text); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+/** "granted" | "denied" | "prompt", or null where the query is unsupported. */
+async function clipboardPermission() {
+  try {
+    const status = await navigator.permissions.query({ name: "clipboard-read" });
+    return status.state;
+  } catch {
+    return null;
+  }
+}
+
 function setProgress(value) {
   els.bar.style.width = `${Math.max(0, Math.min(1, value)) * 100}%`;
 }
@@ -654,22 +687,37 @@ els.rate.addEventListener("input", () => {
 });
 
 els.paste.addEventListener("click", async () => {
-  // navigator.clipboard needs a secure context (https or localhost) and, in
-  // Chrome, a clipboard-read permission the user is free to refuse — so every
-  // way out of here has to leave the box usable.
+  // A page only reaches the clipboard if the browser allows it: a secure context
+  // (https or localhost) plus, in Chrome, a clipboard-read permission the user is
+  // free to refuse. So Paste works when it can and says so when it cannot.
+  if (state.pasting) return;
+  state.pasting = true;
+  els.paste.disabled = true;
+  setHint("Reading your clipboard…");
   try {
-    const text = await navigator.clipboard.readText();
+    const text = await readClipboard();
     if (!text.trim()) {
-      setHint("Your clipboard has no text in it.");
+      els.source.focus();
+      setHint("Your clipboard has no text in it — copy the passage first.", true);
       return;
     }
     els.source.value = text;
     els.source.dispatchEvent(new Event("input"));
     render(text);
     setHint(`Pasted ${text.length.toLocaleString()} characters.`);
-  } catch {
+  } catch (err) {
     els.source.focus();
-    setHint("This browser would not hand over the clipboard — press ⌘V or Ctrl+V in the box.", true);
+    const permission = await clipboardPermission();
+    const why =
+      err && err.message === "timeout"
+        ? "Your browser is still waiting for permission to read the clipboard — answer its prompt, then click Paste again."
+        : permission === "denied"
+          ? "Clipboard access is blocked for this page — allow it from the address bar, then click Paste again."
+          : "This browser will not hand the clipboard to the page.";
+    setHint(`${why} You can always press ⌘V (Ctrl+V) in the box.`, true);
+  } finally {
+    state.pasting = false;
+    els.paste.disabled = false;
   }
 });
 
